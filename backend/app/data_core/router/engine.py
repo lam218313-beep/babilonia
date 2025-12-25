@@ -94,11 +94,7 @@ class DataCoreRouter:
                 confidence_score=0.0
             )
             
-        # Procesar resultados y generar respuesta (Synthesis)
-        # Aquí normalmente llamaríamos a un LLM (Gemini Pro) para sintetizar la respuesta
-        # usando los chunks recuperados como contexto.
-        # Por ahora, hacemos una síntesis mock simple.
-        
+        # Procesar resultados y generar respuesta (Synthesis) con Gemini Pro
         citations = []
         context_text = ""
         
@@ -110,14 +106,41 @@ class DataCoreRouter:
                 page_number=res["page_number"],
                 text_snippet=res["content"]
             ))
-            context_text += f"- {res['content']} (Fuente: {res['source_file']})\n"
+            context_text += f"--- Documento: {res['source_file']} (Página {res['page_number']}) ---\n{res['content']}\n\n"
             
-        # Mock Synthesis
-        synthesized_answer = f"Según la normativa vigente ({intent}):\n\n{context_text}\n\nEsta información es válida para el contexto solicitado."
+        # Llamada real a Gemini 1.5 Pro
+        try:
+            model = genai.GenerativeModel('gemini-1.5-pro')
+            
+            system_instruction = """
+            Eres un asistente técnico experto en construcción y normativa BIM.
+            Responde a la consulta del usuario basándote EXCLUSIVAMENTE en el contexto proporcionado.
+            SIEMPRE cita el nombre del archivo y el número de página al final de cada afirmación relevante.
+            Si la información no está en el contexto, indícalo claramente.
+            """
+            
+            prompt = f"""
+            {system_instruction}
+            
+            CONTEXTO RECUPERADO:
+            {context_text}
+            
+            CONSULTA DEL USUARIO:
+            {user_query}
+            """
+            
+            response = model.generate_content(prompt)
+            synthesized_answer = response.text
+            confidence = 0.9 # Estimado
+            
+        except Exception as e:
+            print(f"Error generando respuesta con Gemini: {e}")
+            synthesized_answer = f"Error al generar respuesta detallada. Contexto encontrado:\n\n{context_text}"
+            confidence = 0.5
         
         return CoreResponse(
             answer=synthesized_answer,
             citations=citations,
-            confidence_score=0.95, # Mock confidence
+            confidence_score=confidence,
             metadata={"intent": intent, "store_used": target_store}
         )

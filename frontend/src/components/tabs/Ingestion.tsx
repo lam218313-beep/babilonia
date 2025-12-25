@@ -13,6 +13,7 @@ export default function Ingestion() {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [metadata, setMetadata] = useState<any>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -61,6 +62,7 @@ export default function Ingestion() {
 
     setIsUploading(true);
     setLogs([]);
+    setMetadata(null);
     addLog('info', 'Iniciando proceso de ingesta...', 'Inicio');
 
     const formData = new FormData();
@@ -90,23 +92,54 @@ export default function Ingestion() {
 
         for (const line of lines) {
             if (line.trim() === '') continue;
+
+            // Handle SUCCESS record with metadata
+            if (line.startsWith('SUCCESS: ')) {
+                try {
+                    const jsonStr = line.substring('SUCCESS: '.length);
+                    const record = JSON.parse(jsonStr);
+                    setMetadata(record.metadata);
+                    addLog('success', 'Proceso completado exitosamente', 'Fin');
+                } catch (e) {
+                    console.error('Error parsing success record:', e);
+                    addLog('error', 'Error al procesar metadatos finales');
+                }
+                continue;
+            }
+
+            // Handle standard logs
             try {
+                // Try parsing as JSON first
                 const data = JSON.parse(line);
-                // Map backend log levels to frontend
                 let level: LogEntry['level'] = 'info';
                 if (data.level === 'ERROR') level = 'error';
                 if (data.level === 'SUCCESS') level = 'success';
                 if (data.level === 'WARNING') level = 'warning';
-                
                 addLog(level, data.message, data.step);
             } catch (e) {
-                console.error('Error parsing log line:', line, e);
-                addLog('info', line); // Fallback for non-JSON lines
+                // Fallback: Parse "LEVEL: Message" format from backend
+                const match = line.match(/^([A-Z]+): (.*)$/);
+                if (match) {
+                    const levelStr = match[1].toLowerCase();
+                    const msg = match[2];
+                    let level: LogEntry['level'] = 'info';
+                    
+                    if (levelStr.includes('error')) level = 'error';
+                    else if (levelStr.includes('success')) level = 'success';
+                    else if (levelStr.includes('warn')) level = 'warning';
+                    else if (levelStr.includes('step')) {
+                         // Special handling for STEP logs
+                         addLog('info', msg, 'Proceso');
+                         continue;
+                    }
+                    
+                    addLog(level, msg);
+                } else {
+                    addLog('info', line); 
+                }
             }
         }
       }
-
-      addLog('success', 'Proceso completado exitosamente', 'Fin');
 
     } catch (error) {
       console.error('Upload error:', error);
@@ -217,6 +250,38 @@ export default function Ingestion() {
                 <span className="text-blue-400 flex items-center gap-1"><Activity size={14} /> Waiting</span>
               </div>
             </div>
+
+            {metadata && (
+                <div className="mt-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 animate-in fade-in slide-in-from-bottom-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-green-500/20 rounded-lg text-green-400 shrink-0">
+                            <CheckCircle size={20} />
+                        </div>
+                        <div className="min-w-0">
+                            <h3 className="text-base font-bold text-white mb-1">Documento Indexado</h3>
+                            
+                            <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+                                <div className="bg-gray-900/50 p-2 rounded">
+                                    <span className="text-gray-500 block text-[10px] uppercase">Código</span>
+                                    <span className="text-white font-mono font-bold truncate">{metadata.code}</span>
+                                </div>
+                                <div className="bg-gray-900/50 p-2 rounded">
+                                    <span className="text-gray-500 block text-[10px] uppercase">Año</span>
+                                    <span className="text-white font-mono font-bold">{metadata.year}</span>
+                                </div>
+                                <div className="bg-gray-900/50 p-2 rounded col-span-2">
+                                    <span className="text-gray-500 block text-[10px] uppercase">Título</span>
+                                    <span className="text-white font-medium line-clamp-2">{metadata.title}</span>
+                                </div>
+                                <div className="bg-gray-900/50 p-2 rounded col-span-2">
+                                    <span className="text-gray-500 block text-[10px] uppercase">Categoría</span>
+                                    <span className="text-blue-400 font-bold truncate">{metadata.category}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
           </div>
         </div>
 

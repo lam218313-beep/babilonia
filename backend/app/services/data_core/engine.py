@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, Generator
 from uuid import uuid4
 from dotenv import load_dotenv
+from app.data_core.librarian.sanitizer import clean_document
 
 # Cargar variables de entorno
 load_dotenv()
@@ -89,48 +90,20 @@ class DataCoreEngine:
 
     def _sanitize_document(self, input_path: str) -> Path:
         """
-        Limpia headers y footers (10%) y guarda en storage.
+        Limpia headers y footers (10%) y guarda en storage usando el Librarian.
         """
-        doc = fitz.open(input_path)
-        clean_doc = fitz.open()
-        
-        valid_pages = 0
-        
-        for page in doc:
-            rect = page.rect
-            height = rect.height
-            margin = height * 0.10
+        try:
+            clean_bytes = clean_document(str(input_path))
             
-            # Definir área segura
-            clip_rect = fitz.Rect(0, margin, rect.width, height - margin)
+            output_filename = f"{uuid4()}.pdf"
+            output_path = LOCAL_STORAGE_PATH / output_filename
             
-            # Validar contenido (densidad de texto)
-            text = page.get_text("text", clip=clip_rect)
-            if len(text.strip()) < 100 and not page.get_images():
-                continue # Descartar página vacía/separador
+            with open(output_path, "wb") as f:
+                f.write(clean_bytes)
                 
-            # Copiar página y aplicar redacción (blanqueo) a márgenes
-            clean_doc.insert_pdf(doc, from_page=page.number, to_page=page.number)
-            new_page = clean_doc[-1]
-            
-            # Blanquear Header
-            new_page.add_redact_annot(fitz.Rect(0, 0, rect.width, margin), fill=(1, 1, 1))
-            # Blanquear Footer
-            new_page.add_redact_annot(fitz.Rect(0, height - margin, rect.width, height), fill=(1, 1, 1))
-            new_page.apply_redactions()
-            
-            valid_pages += 1
-            
-        if valid_pages == 0:
-            raise ValueError("El documento no contiene páginas válidas tras la limpieza.")
-            
-        output_filename = f"{uuid4()}.pdf"
-        output_path = LOCAL_STORAGE_PATH / output_filename
-        clean_doc.save(output_path)
-        clean_doc.close()
-        doc.close()
-        
-        return output_path
+            return output_path
+        except Exception as e:
+            raise ValueError(f"Error durante la sanitización: {str(e)}")
 
     def _upload_to_gemini(self, file_path: Path):
         """
@@ -164,9 +137,10 @@ class DataCoreEngine:
         pix = page.get_pixmap()
         img_data = pix.tobytes("png")
         
-        from PIL import Image
-        import io
-        image = Image.open(io.BytesIO(img_data))
+        image_part = {
+            "mime_type": "image/png",
+            "data": img_data
+        }
         
         prompt = """
         Analiza esta portada de documento técnico de construcción.
@@ -178,7 +152,7 @@ class DataCoreEngine:
         """
         
         try:
-            response = model.generate_content([prompt, image])
+            response = model.generate_content([prompt, image_part])
             text = response.text.replace("```json", "").replace("```", "").strip()
             return json.loads(text)
         except Exception as e:

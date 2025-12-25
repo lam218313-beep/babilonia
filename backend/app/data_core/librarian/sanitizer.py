@@ -45,17 +45,30 @@ def clean_document(file_path: str) -> bytes:
             continue
             
         # Si la página es válida, la copiamos al nuevo documento.
-        # Nota: PyMuPDF no permite "recortar" contenido fácilmente sin redibujar.
-        # Para efectos de RAG, lo más importante es que el texto extraíble esté limpio.
-        # Una estrategia común es usar Redactions para eliminar lo que está fuera del Safe Zone.
-        
-        # Copiamos la página al nuevo documento
         clean_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
-        new_page = clean_doc[-1] # La página recién insertada
         
-        # Aplicar Redaction (borrado) a las zonas fuera del Safe Zone (Header y Footer)
+        # Aplicar Redactions para eliminar visualmente (y del texto extraíble) lo que está fuera del Safe Zone
+        # Esto asegura que cuando Gemini lea el archivo, no lea los headers/footers.
+        new_page = clean_doc[-1] # La última página insertada
+        
+        # Redactar Header (Parte superior)
         header_rect = fitz.Rect(0, 0, width, margin_top)
+        new_page.add_redact_annot(header_rect, fill=(1, 1, 1)) # Blanco
+        
+        # Redactar Footer (Parte inferior)
         footer_rect = fitz.Rect(0, height - margin_bottom, width, height)
+        new_page.add_redact_annot(footer_rect, fill=(1, 1, 1)) # Blanco
+        
+        # Aplicar las redacciones
+        new_page.apply_redactions()
+
+    # Guardar en buffer
+    output_buffer = io.BytesIO()
+    clean_doc.save(output_buffer)
+    clean_doc.close()
+    doc.close()
+    
+    return output_buffer.getvalue()
         
         new_page.add_redact_annot(header_rect, fill=(1, 1, 1)) # Blanco
         new_page.add_redact_annot(footer_rect, fill=(1, 1, 1)) # Blanco
