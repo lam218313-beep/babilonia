@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from uuid import uuid4
 import google.generativeai as genai
 
-from src.data_core.models.schema import CoreResponse, Citation
+from app.services.data_core.models.schema import CoreResponse, Citation
 
 class VertexAISearchMock:
     """

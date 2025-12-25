@@ -18,7 +18,12 @@ def clean_document(file_path: str) -> bytes:
     # Crear un nuevo documento para la salida
     clean_doc = fitz.open()
     
+    print(f"DEBUG: Processing PDF with {len(doc)} pages")
+
     for page_num in range(len(doc)):
+        if page_num % 10 == 0:
+            print(f"DEBUG: Processing page {page_num}")
+            
         page = doc[page_num]
         rect = page.rect
         width = rect.width
@@ -69,15 +74,6 @@ def clean_document(file_path: str) -> bytes:
     doc.close()
     
     return output_buffer.getvalue()
-        
-        new_page.add_redact_annot(header_rect, fill=(1, 1, 1)) # Blanco
-        new_page.add_redact_annot(footer_rect, fill=(1, 1, 1)) # Blanco
-        new_page.apply_redactions()
-        
-    # Guardar en buffer
-    clean_doc.save(output_buffer)
-    clean_doc.close()
-    doc.close()
     
     output_buffer.seek(0)
     return output_buffer.read()

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, Generator
 from uuid import uuid4
 from dotenv import load_dotenv
-from app.data_core.librarian.sanitizer import clean_document
+from app.services.data_core.librarian.sanitizer import clean_document
 
 # Cargar variables de entorno
 load_dotenv()
@@ -44,29 +44,42 @@ class DataCoreEngine:
         """
         Generador asíncrono que emite logs del proceso de ingesta.
         """
+        loop = asyncio.get_running_loop()
+        print(f"DEBUG: Starting process_document for {original_filename}")
         try:
             yield f"START: Iniciando procesamiento de {original_filename}\n"
             
             # 1. Sanitización Local
+            print("DEBUG: Starting sanitization")
             yield "STEP: Sanitizando documento (recorte de headers/footers)...\n"
-            clean_pdf_path = self._sanitize_document(file_path)
+            # Ejecutar tarea bloqueante en thread pool
+            clean_pdf_path = await loop.run_in_executor(None, self._sanitize_document, file_path)
+            print(f"DEBUG: Sanitization complete. Path: {clean_pdf_path}")
             yield f"INFO: Documento limpio guardado en {clean_pdf_path.name}\n"
 
             # 2. Subida a Gemini
+            print("DEBUG: Starting Gemini upload")
             yield "STEP: Subiendo a Gemini File Search...\n"
             if not GOOGLE_API_KEY:
+                print("DEBUG: No API Key, mocking upload")
                 yield "WARN: No API Key found. Skipping Gemini upload (Mock Mode).\n"
                 gemini_file = {"name": "mock-gemini-id", "uri": "mock-uri"}
             else:
-                gemini_file = self._upload_to_gemini(clean_pdf_path)
+                # Ejecutar tarea bloqueante en thread pool
+                gemini_file = await loop.run_in_executor(None, self._upload_to_gemini, clean_pdf_path)
+                print("DEBUG: Gemini upload complete")
                 yield "INFO: Archivo subido exitosamente a Gemini.\n"
 
             # 3. Tagging (Clasificación)
+            print("DEBUG: Starting Tagging")
             yield "STEP: Analizando contenido con IA (Tagging)...\n"
-            metadata = self._tag_document(clean_pdf_path)
+            # Ejecutar tarea bloqueante en thread pool
+            metadata = await loop.run_in_executor(None, self._tag_document, clean_pdf_path)
+            print(f"DEBUG: Tagging complete: {metadata}")
             yield f"INFO: Clasificado como {metadata.get('category')} - {metadata.get('code')}\n"
 
             # 4. Registro
+            print("DEBUG: Registering in DB")
             yield "STEP: Registrando en base de datos local...\n"
             record_id = str(uuid4())
             record = {
