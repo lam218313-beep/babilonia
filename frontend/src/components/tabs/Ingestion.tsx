@@ -69,10 +69,16 @@ export default function Ingestion() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/ingest/upload', {
+      console.log('Initiating upload request...');
+      const response = await fetch('http://127.0.0.1:8000/api/v1/upload', {
         method: 'POST',
         body: formData,
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server responded with ${response.status}: ${errorText}`);
+      }
 
       if (!response.body) throw new Error('No response body');
 

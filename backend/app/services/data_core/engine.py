@@ -146,9 +146,12 @@ class DataCoreEngine:
         
         # Convertir primera página a imagen para el modelo
         doc = fitz.open(file_path)
-        page = doc[0]
-        pix = page.get_pixmap()
-        img_data = pix.tobytes("png")
+        try:
+            page = doc[0]
+            pix = page.get_pixmap()
+            img_data = pix.tobytes("png")
+        finally:
+            doc.close()
         
         image_part = {
             "mime_type": "image/png",
